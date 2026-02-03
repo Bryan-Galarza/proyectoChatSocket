@@ -1,23 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>chatGrupal</title>
+  <title>Chat Grupal</title>
 
   <script type="module">
     import { io } from 'https://cdn.socket.io/4.3.2/socket.io.esm.min.js'
+    
+    let currentRoom = null
+    let currentTarget = null
 
+    // Obtener username
     const getUsername = async () => {
-      const username = localStorage.getItem('username');
+      const username = localStorage.getItem('username')
+      if (username && username !== "undefined") return username
       
-      // Check if username exists and isn't the string "undefined"
-      if (username && username !== "undefined") {
-        console.log(`User existed: ${username}`);
-        return username;
-      }
-
       try {
         const res = await fetch('https://randomuser.me/api/0.8/?results=1');
         const data = await res.json();
@@ -29,60 +27,227 @@
       } catch (error) {
         console.error("Fetch failed:", error);
       }
-    };
+    }
 
     const socket = io({
-      auth: {
-        username: await getUsername(),
-        serverOffset: 0
-      }
+      auth: {username: await getUsername(), serverOffset: 0}
     })
 
+    //constantes
     const form = document.getElementById('form')
     const input = document.getElementById('input')
     const messages = document.getElementById('messages')
+    const statusMessages = document.getElementById('status-messages')
+    const notificationList = document.getElementById('notification-list')
+    const headerTitle = document.getElementById('header-title')
+    const backButton = document.getElementById('back-button')
+    const currentUser = socket.auth.username
 
-    //Escucha de los mensajes del server
-    socket.on('chat message', (msg, serverOffset, username) => {
-      const item = `<li>
-        <small>${username}</small> <p>${msg}</p>
+    //Configuracion de notificaciones
+    if (!localStorage.getItem('notifications')) {
+      localStorage.setItem('notifications', JSON.stringify([]))
+    }
+
+    function updateNotificationList() {
+      const notifications = JSON.parse(localStorage.getItem('notifications'))
+      notificationList.innerHTML = ''
+      
+      if (notifications.length === 0) {
+        notificationList.innerHTML = '<li style="padding: 10px; color: #888;">No hay notificaciones</li>'
+        return
+      }
+
+      notifications.forEach(notif => {
+        const item = document.createElement('li')
+        item.className = 'notification-item'
+        item.innerHTML = `<strong>${notif.user}</strong><small>Nuevo mensaje</small>`
+        item.style.cssText = 'padding: 10px; border-bottom: 1px solid #333; cursor: pointer; background: #2a2a2a; margin-bottom: 5px; border-radius: 5px;'
+        
+        item.addEventListener('click', () => {
+          openPrivateChat(notif.user)
+          const updated = notifications.filter(n => n.user !== notif.user)
+          localStorage.setItem('notifications', JSON.stringify(updated))
+          updateNotificationList()
+        })
+        
+        notificationList.appendChild(item)
+      })
+    }
+
+    function showNotification(fromUser, roomId) {
+      console.log('Mostrando notificación de:', fromUser, 'room:', roomId)
+      const notifications = JSON.parse(localStorage.getItem('notifications'))
+      const existing = notifications.find(n => n.user === fromUser)
+      
+      if (!existing) {
+        notifications.push({ user: fromUser, roomId, timestamp: Date.now() })
+        localStorage.setItem('notifications', JSON.stringify(notifications))
+        updateNotificationList()
+      }
+    }
+
+    //Configuraciones del chat
+    function openPrivateChat(targetUser) {
+      if (targetUser === currentUser) return
+
+      const roomId = [currentUser, targetUser].sort().join('-')
+      currentRoom = roomId
+      currentTarget = targetUser
+      
+      headerTitle.textContent = `Chat con ${targetUser}`
+      backButton.style.display = 'block'
+
+      messages.innerHTML += `<li style="text-align: center; color: #888; font-style: italic; background: transparent;">
+        --- Chat privado con ${targetUser} ---
       </li>`
-      messages.insertAdjacentHTML('beforeend', item)
+      
+      socket.emit('join:private', roomId)
+    }
+
+    function returnToGeneral() {
+      currentRoom = null
+      currentTarget = null
+      headerTitle.textContent = 'Chat General'
+      backButton.style.display = 'none'
+
+      messages.innerHTML += `<li style="text-align: center; color: #888; font-style: italic; background: transparent;">
+        --- Volviendo al chat general --- </li>`
+      socket.auth.serverOffset = 0
+    }
+
+    //Event Listeners
+    backButton.addEventListener('click', returnToGeneral)
+
+    statusMessages.addEventListener('click', (e) => {
+      const li = e.target.closest('.user-item')
+      if (!li) return
+      
+      const targetUser = li.dataset.username || li.textContent.split(' (')[0] // Cambio aquí
+      if (targetUser !== currentUser) {
+        openPrivateChat(targetUser)
+      }
+    })
+
+    //Enviar mensaje segun corresponda
+    form.addEventListener('submit', (e) => {
+      e.preventDefault()
+      const msg = input.value.trim()
+      if (!msg) return
+      //Si es mensaje privado
+      if (currentRoom && currentTarget) {
+        socket.emit('chat:private', {
+          msg: msg,
+          roomId: currentRoom,
+          target: currentTarget
+        })
+        messages.insertAdjacentHTML('beforeend', `
+          <li style="text-align: right; background: #1a3a5f;">
+            <small style="color: #09f;">Tú (privado)</small>
+            <p>${msg}</p>
+          </li>
+        `)
+      } else {
+        socket.emit('chat:general', msg)
+      }
+      
+      input.value = ''
+      messages.scrollTop = messages.scrollHeight
+    })
+
+    //Escucha del socket
+    socket.on('chat message', (msg, serverOffset, username) => {
+      messages.insertAdjacentHTML('beforeend', `
+        <li>
+          <small>${username}</small>
+          <p>${msg}</p>
+        </li>
+      `)
       socket.auth.serverOffset = serverOffset
       messages.scrollTop = messages.scrollHeight
     })
 
-    //Escucha para estados de usuarios
-    const statusMessages = document.getElementById('status-messages');
-    socket.on('user status', (info) =>{
-      const item = `<li> ${info}</li>`;
-      statusMessages.insertAdjacentHTML('beforeend', item);
-      statusMessages.scrollTop = statusMessages.scrollHeight;
+    socket.on('private message', ({ msg, username, roomId }) => {
+      console.log('Mensaje privado recibido:', { msg, username, roomId, currentRoom, currentUser })
+      
+      const roomIdExpected = [currentUser, username].sort().join('-')
+      
+      if (roomId === roomIdExpected && currentRoom === roomId) {
+        if (username !== currentUser) {
+          messages.insertAdjacentHTML('beforeend', `
+            <li style="background: #000;">
+              <small style="color: #09f;">${username} (privado)</small>
+              <p>${msg}</p>
+            </li>
+          `)
+        }
+      } else if (username !== currentUser) {
+        console.log('Mostrando notificación para mensaje de:', username)
+        showNotification(username, roomId)
+      }
+      
+      messages.scrollTop = messages.scrollHeight
     })
 
-    form.addEventListener('submit', (e) => {
-      e.preventDefault()
-      if (input.value) {
-        socket.emit('chat message', input.value)
-        input.value = ''
+    //Para mensajes de union o desconexion del chat
+    socket.on('user status', ({ username, action }) => {
+      if (username === currentUser) return
+
+      if (action === 'join') {
+        const item = document.createElement('li')
+        item.className = 'user-item'
+        item.dataset.username = username
+        item.textContent = `${username} se ha unido al chat`
+        item.style.cssText = 'cursor:pointer; color:#09f; padding:5px 10px;'
+        statusMessages.appendChild(item)
+
+      } else if (action === 'leave') {
+        const item = document.createElement('li')
+        item.style.cssText = 'color:#888; font-style:italic; padding:5px 10px;'
+        item.textContent = `${username} se desconectó del chat`
+        statusMessages.appendChild(item)
+
+        messages.insertAdjacentHTML('beforeend', `
+          <li style="text-align:center;color:#888;font-style:italic;">
+            ${username} se desconectó del chat
+          </li>
+        `)
       }
     })
+
+    updateNotificationList()
+    
+    //Iniciar chat
+    const currentUserItem = document.createElement('li')
+    currentUserItem.className = 'user-item'
+    currentUserItem.dataset.username = currentUser
+    currentUserItem.textContent = `${currentUser} (tú)`
+    currentUserItem.style.cssText = 'color:#888; padding:5px 10px; margin:2px 0;'
+    statusMessages.appendChild(currentUserItem)
+
   </script>
   <link rel="stylesheet" href="/estilos/chat.css">
 </head>
 
 <body>
-  <main class= "container">
+  <main class="container">
     <section id="chat">
+      <div id="chat-header">
+        <button id="back-button" style="display: none;">←</button>
+        <h3 id="header-title">Chat General</h3>
+      </div>
       <ul id="messages"></ul>
       <form id="form">
-        <input type="text" name="message" id="input" placeholder="Type a message" autocomplete="off" />
-        <button type="submit">Enviar</button>
+        <input id="input" autocomplete="off" placeholder="Escribe un mensaje...">
+        <button>Enviar</button>
       </form>
     </section>
-    <aside id = chatUnidos>
+    
+    <aside id="chatUnidos">
       <h3>Usuarios</h3>
-      <ul id = "status-messages"></ul>
+      <ul id="status-messages"></ul>
+
+      <h3 style="margin-top: 20px;">Notificaciones</h3>
+      <ul id="notification-list"></ul>
     </aside>
   </main>
 </body>

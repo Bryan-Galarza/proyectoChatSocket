@@ -43,23 +43,45 @@
       width: 350px;
       height: 100%;
       position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    #chat-header {
+      background: #1a1a1a;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid #333;
     }
 
-    #form {
-      bottom: 0;
+    #header-title {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    #back-button {
+      background: none;
+      border: none;
+      color: #09f;
+      cursor: pointer;
+      padding: 5px 10px;
+      font-size: 0.9rem;
+    }
+
+    #form{
       display: flex;
-      height: 48px;
-      left: 0;
       padding: 4px;
-      position: absolute;
-      right: 0;
+      background: #1a1a1a;
+      border-top: 1px solid #333;
     }
 
     #input {
       border-radius: 9999px;
       border: 1px solid #eee;
       flex: 1;
-      margin: 4px;
+      margin-top:3px;
+      margin-bottom:3px;
       padding: 0 8px;
     }
 
@@ -100,3 +122,4 @@
       padding:0;
       font-size: 0.85rem;
     }
+

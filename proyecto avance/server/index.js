@@ -5,24 +5,25 @@ import { createClient } from '@libsql/client'
 
 import { Server } from 'socket.io'
 import { createServer } from 'node:http'
-//config
+
 dotenv.config()
 const port = process.env.PORT ?? 3000
 
-//Express
 const app = express()
 app.use(express.static('client'))
+app.use(logger('dev'))
+
 const server = createServer(app)
 const io = new Server(server, {
   connectionStateRecovery: {}
 })
-//Create client
+
 const db = createClient({
-  //url: 'libsql://cuddly-wasp-weaverm.aws-us-west-2.turso.io',
   url: process.env.DB_URL,
   authToken: process.env.DB_TOKEN
 })
 
+//Tablas para mensajes general y privado
 await db.execute(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,21 +31,44 @@ await db.execute(`
     user TEXT
   )
 `)
-//Notificar cuando alguien se une o desconecta del chat
+
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS private_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT,
+    sender TEXT,
+    receiver TEXT,
+    room_id TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`)
+
 io.on('connection', async (socket) => {
   const username = socket.handshake.auth.username ?? 'anonymous';
-  console.log(`a user has connected!: ${username}`);
-  io.emit('user status', `${username} se ha unido al chat`);
+  console.log(`an user has connected!: ${username}`);
+
+  // Notificar a todos que un usuario se unio
+  socket.broadcast.emit('user status', {username, action: 'join' })
+
+  // Enviar lista de usuarios conectados
+  const connectedUsers = Array.from(io.sockets.sockets.values())
+    .map(s => s.handshake.auth.username)
+    .filter(name => name && name !== username)
+  
+  connectedUsers.forEach(user => {
+    socket.emit('user status', {username: user, action: 'join' })
+  })
 
   socket.on('disconnect', () => {
     console.log(`an user has disconnected: ${username}`)
-    io.emit('user status', `${username} ha salido del chat`);
+    io.emit('user status', {username, action: 'leave' })
   });
 
-  socket.on('chat message', async (msg) => {
-    let result
+  //Chat general
+  socket.on('chat:general', async (msg) => {
     const username = socket.handshake.auth.username ?? 'anonymous'
-    console.log({ username })
+    let result
+    
     try {
       result = await db.execute({
         sql: 'INSERT INTO messages (content, user) VALUES (:msg, :username)',
@@ -58,7 +82,8 @@ io.on('connection', async (socket) => {
     io.emit('chat message', msg, result.lastInsertRowid.toString(), username)
   })
 
-  if (!socket.recovered) { // <- recuperase los mensajes sin conexión
+  //Recuperar mensajes
+  if (!socket.recovered) {
     try {
       const results = await db.execute({
         sql: 'SELECT id, content, user FROM messages WHERE id > ?',
@@ -72,9 +97,35 @@ io.on('connection', async (socket) => {
       console.error(e)
     }
   }
-})
 
-app.use(logger('dev'))
+  //Union a sala privada
+  socket.on('join:private', (roomId) => {
+    socket.join(roomId);
+    console.log(`${username} unido a sala ${roomId}`)
+  })
+
+  //chat privado
+  socket.on('chat:private', async ({ msg, roomId, target }) => {
+    const username = socket.handshake.auth.username ?? 'anonymous'
+    if (!socket.rooms.has(roomId)) {
+      socket.join(roomId);
+    }
+
+    try {
+      await db.execute({
+        sql: 'INSERT INTO private_messages (content, sender, receiver, room_id) VALUES (:msg, :sender, :receiver, :roomId)',
+        args: { msg, sender: username, receiver: target, roomId }
+      })
+    } catch (e) {
+      console.error('Error al guardar mensaje privado:', e)
+    }
+
+    // Enviar al destinatario con io
+    io.to(roomId).emit('private message', {
+      msg, username, roomId
+    })
+  })
+})
 
 app.get('/', (req, res) => {
   res.sendFile(process.cwd() + '/client/index.html')
