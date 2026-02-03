@@ -4,67 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>chatGrupal</title>
-
-  <script type="module">
-    import { io } from 'https://cdn.socket.io/4.3.2/socket.io.esm.min.js'
-
-    const getUsername = async () => {
-      const username = localStorage.getItem('username');
-
-      // Check if username exists and isn't the string "undefined"
-      if (username && username !== "undefined") {
-        console.log(`User existed: ${username}`);
-        return username;
-      }
-
-      try {
-        const res = await fetch('https://randomuser.me/api/0.8/?results=1');
-        const data = await res.json();
-
-        // Accessing the path specifically for version 0.8
-        const randomUsername = data.results[0].user.username;
-
-        console.log("Fetched new username:", randomUsername);
-
-        localStorage.setItem('username', randomUsername);
-        return randomUsername;
-      } catch (error) {
-        console.error("Fetch failed:", error);
-      }
-    };
-
-    const socket = io({
-      auth: {
-        username: await getUsername(),
-        serverOffset: 0
-      }
-    })
-
-    const form = document.getElementById('form')
-    const input = document.getElementById('input')
-    const messages = document.getElementById('messages')
-
-    socket.on('chat message', (msg, serverOffset, username) => {
-      const item = `<li>
-        <p>${msg}</p>
-        <small>${username}</small>
-      </li>`
-      messages.insertAdjacentHTML('beforeend', item)
-      socket.auth.serverOffset = serverOffset
-      // scroll to bottom of messages
-      messages.scrollTop = messages.scrollHeight
-    })
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault()
-
-      if (input.value) {
-        socket.emit('chat message', input.value)
-        input.value = ''
-      }
-    })
-  </script>
+  <title>Chat Grupal</title>
 
   <style>
     *,
@@ -74,91 +14,551 @@
     }
 
     :root {
-      color-scheme: light dark;
+      color-scheme: dark;
+      --primary: #6366f1;
+      --primary-hover: #818cf8;
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --border: #475569;
+      --success: #10b981;
+      --shadow: rgba(0, 0, 0, 0.3);
     }
 
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
       display: grid;
       place-content: center;
       height: 100vh;
-      padding: 36px 36px 100px 36px;
+      padding: 24px;
       grid-template-rows: 1fr;
+      background: linear-gradient(135deg, var(--bg-primary) 0%, #1e1b4b 100%);
+      background-attachment: fixed;
+    }
+
+    .container {
+      display: flex;
+      gap: 20px;
+      height: 85vh;
+      align-items: flex-start;
+    }
+
+    #chat {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      width: 450px;
+      height: 100%;
+      position: relative;
+      background: var(--bg-secondary);
+      box-shadow: 0 10px 40px var(--shadow);
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(10px);
+    }
+
+    #chat-header {
+      background: var(--bg-primary);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #header-title {
+      margin: 0;
+      font-size: 1.25rem;
+      flex: 1;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    #back-button {
+      background: var(--primary);
+      border: none;
+      color: white;
+      cursor: pointer;
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      border-radius: 12px;
+      margin-right: 12px;
+      transition: all 0.3s ease;
+      font-weight: 500;
+    }
+
+    #back-button:hover {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
     }
 
     #messages {
       list-style-type: none;
       margin: 0;
-      padding: 0;
-      overflow-y: scroll;
+      padding: 24px;
+      overflow-y: auto;
       height: 100%;
       scroll-behavior: smooth;
-      padding-bottom: 48px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
 
     #messages>li {
-      padding: .5rem 1rem;
+      padding: 14px 18px;
+      border-radius: 18px;
+      max-width: 75%;
+      animation: messageAppear 0.3s ease-out;
+      word-wrap: break-word;
+      line-height: 1.5;
     }
 
     #messages>li:nth-child(odd) {
-      background: #000;
+      background: var(--bg-tertiary);
+      align-self: flex-start;
+      border-bottom-left-radius: 6px;
+      color: var(--text-primary);
     }
 
-    #chat {
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      overflow: hidden;
-      width: 350px;
-      height: 100%;
-      position: relative;
+    #messages>li:nth-child(even) {
+      background: var(--primary);
+      align-self: flex-end;
+      border-bottom-right-radius: 6px;
+      color: white;
+    }
+
+    #messages>li p {
+      margin: 4px 0 0 0;
+      font-size: 15px;
+    }
+
+    #messages>li small {
+      font-size: 11px;
+      opacity: 0.75;
+      display: block;
+      font-weight: 500;
     }
 
     #form {
-      bottom: 0;
       display: flex;
-      height: 48px;
-      left: 0;
-      padding: 4px;
-      position: absolute;
-      right: 0;
+      padding: 16px 20px;
+      background: var(--bg-primary);
+      border-top: 1px solid var(--border);
+      gap: 12px;
+      align-items: center;
     }
 
     #input {
-      border-radius: 9999px;
-      border: 1px solid #eee;
+      border-radius: 24px;
+      border: 2px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
       flex: 1;
-      margin: 4px;
-      padding: 0 8px;
+      padding: 14px 20px;
+      font-size: 15px;
+      transition: all 0.3s ease;
     }
 
     #input:focus {
-      outline: 0;
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    #input::placeholder {
+      color: #94a3b8;
     }
 
     #form>button {
-      background: #09f;
-      color: #fff;
-      border: 0;
-      margin: 4px;
-      border-radius: 4px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      padding: 0 24px;
+      height: 48px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 600;
+      font-size: 15px;
     }
 
     #form>button:hover {
-      background: #0cf;
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+    }
+
+    #form>button:active {
+      transform: translateY(0);
+    }
+
+    /* Sidebar de usuarios y notificaciones */
+    #chatUnidos {
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      width: 280px;
+      height: 100%;
+      padding: 20px;
+      background: var(--bg-secondary);
+      overflow-y: auto;
+      box-shadow: 0 10px 40px var(--shadow);
+    }
+
+    #chatUnidos h3 {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      margin: 0 0 16px 0;
+      font-weight: 600;
+    }
+
+    #status-messages,
+    #notification-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    #status-messages li,
+    #notification-list li {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 12px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    .user-item {
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    .user-item:hover {
+      background: var(--primary);
+      color: white;
+      transform: translateX(4px);
+    }
+
+    .notification-item {
+      cursor: pointer;
+      background: #422006 !important;
+      border-left: 3px solid #f59e0b;
+    }
+
+    .notification-item:hover {
+      background: #78350f !important;
+    }
+
+    .notification-item strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #fbbf24;
+    }
+
+    .notification-item small {
+      color: #fcd34d;
+      font-size: 0.8rem;
+    }
+
+    /* Scrollbar styling */
+    #messages::-webkit-scrollbar,
+    #chatUnidos::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #messages::-webkit-scrollbar-track,
+    #chatUnidos::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #messages::-webkit-scrollbar-thumb,
+    #chatUnidos::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    /* Animation for messages */
+    @keyframes messageAppear {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+        height: auto;
+      }
+
+      #chat {
+        width: 100%;
+        height: 500px;
+      }
+
+      #chatUnidos {
+        width: 100%;
+        height: 300px;
+      }
     }
   </style>
+
+  <script type="module">
+    import { io } from 'https://cdn.socket.io/4.3.2/socket.io.esm.min.js'
+
+    let currentRoom = null
+    let currentTarget = null
+
+    // Obtener username
+    const getUsername = async () => {
+      const username = localStorage.getItem('username')
+      if (username && username !== "undefined") return username
+
+      try {
+        const res = await fetch('https://randomuser.me/api/0.8/?results=1');
+        const data = await res.json();
+        const randomUsername = data.results[0].user.username;
+
+        console.log("Fetched new username:", randomUsername);
+        localStorage.setItem('username', randomUsername);
+        return randomUsername;
+      } catch (error) {
+        console.error("Fetch failed:", error);
+      }
+    }
+
+    const socket = io({
+      auth: { username: await getUsername(), serverOffset: 0 }
+    })
+
+    //constantes
+    const form = document.getElementById('form')
+    const input = document.getElementById('input')
+    const messages = document.getElementById('messages')
+    const statusMessages = document.getElementById('status-messages')
+    const notificationList = document.getElementById('notification-list')
+    const headerTitle = document.getElementById('header-title')
+    const backButton = document.getElementById('back-button')
+    const currentUser = socket.auth.username
+
+    //Configuracion de notificaciones
+    if (!localStorage.getItem('notifications')) {
+      localStorage.setItem('notifications', JSON.stringify([]))
+    }
+
+    function updateNotificationList() {
+      const notifications = JSON.parse(localStorage.getItem('notifications'))
+      notificationList.innerHTML = ''
+
+      if (notifications.length === 0) {
+        notificationList.innerHTML = '<li style="padding: 10px; color: #888;">No hay notificaciones</li>'
+        return
+      }
+
+      notifications.forEach(notif => {
+        const item = document.createElement('li')
+        item.className = 'notification-item'
+        item.innerHTML = `<strong>${notif.user}</strong><small>Nuevo mensaje</small>`
+        item.style.cssText = 'padding: 10px; border-bottom: 1px solid #333; cursor: pointer; background: #2a2a2a; margin-bottom: 5px; border-radius: 5px;'
+
+        item.addEventListener('click', () => {
+          openPrivateChat(notif.user)
+          const updated = notifications.filter(n => n.user !== notif.user)
+          localStorage.setItem('notifications', JSON.stringify(updated))
+          updateNotificationList()
+        })
+
+        notificationList.appendChild(item)
+      })
+    }
+
+    function showNotification(fromUser, roomId) {
+      console.log('Mostrando notificación de:', fromUser, 'room:', roomId)
+      const notifications = JSON.parse(localStorage.getItem('notifications'))
+      const existing = notifications.find(n => n.user === fromUser)
+
+      if (!existing) {
+        notifications.push({ user: fromUser, roomId, timestamp: Date.now() })
+        localStorage.setItem('notifications', JSON.stringify(notifications))
+        updateNotificationList()
+      }
+    }
+
+    //Configuraciones del chat
+    function openPrivateChat(targetUser) {
+      if (targetUser === currentUser) return
+
+      const roomId = [currentUser, targetUser].sort().join('-')
+      currentRoom = roomId
+      currentTarget = targetUser
+
+      headerTitle.textContent = `Chat con ${targetUser}`
+      backButton.style.display = 'block'
+
+      messages.innerHTML += `<li style="text-align: center; color: #888; font-style: italic; background: transparent;">
+        --- Chat privado con ${targetUser} ---
+      </li>`
+
+      socket.emit('join:private', roomId)
+    }
+
+    function returnToGeneral() {
+      currentRoom = null
+      currentTarget = null
+      headerTitle.textContent = 'Chat General'
+      backButton.style.display = 'none'
+
+      messages.innerHTML += `<li style="text-align: center; color: #888; font-style: italic; background: transparent;">
+        --- Volviendo al chat general --- </li>`
+      socket.auth.serverOffset = 0
+    }
+
+    //Event Listeners
+    backButton.addEventListener('click', returnToGeneral)
+
+    statusMessages.addEventListener('click', (e) => {
+      const li = e.target.closest('.user-item')
+      if (!li) return
+
+      const targetUser = li.dataset.username || li.textContent.split(' (')[0] // Cambio aquí
+      if (targetUser !== currentUser) {
+        openPrivateChat(targetUser)
+      }
+    })
+
+    //Enviar mensaje segun corresponda
+    form.addEventListener('submit', (e) => {
+      e.preventDefault()
+      const msg = input.value.trim()
+      if (!msg) return
+      //Si es mensaje privado
+      if (currentRoom && currentTarget) {
+        socket.emit('chat:private', {
+          msg: msg,
+          roomId: currentRoom,
+          target: currentTarget
+        })
+        messages.insertAdjacentHTML('beforeend', `
+          <li style="text-align: right; background: #1a3a5f;">
+            <small style="color: #09f;">Tú (privado)</small>
+            <p>${msg}</p>
+          </li>
+        `)
+      } else {
+        socket.emit('chat:general', msg)
+      }
+
+      input.value = ''
+      messages.scrollTop = messages.scrollHeight
+    })
+
+    //Escucha del socket
+    socket.on('chat message', (msg, serverOffset, username) => {
+      messages.insertAdjacentHTML('beforeend', `
+        <li>
+          <small>${username}</small>
+          <p>${msg}</p>
+        </li>
+      `)
+      socket.auth.serverOffset = serverOffset
+      messages.scrollTop = messages.scrollHeight
+    })
+
+    socket.on('private message', ({ msg, username, roomId }) => {
+      console.log('Mensaje privado recibido:', { msg, username, roomId, currentRoom, currentUser })
+
+      const roomIdExpected = [currentUser, username].sort().join('-')
+
+      if (roomId === roomIdExpected && currentRoom === roomId) {
+        if (username !== currentUser) {
+          messages.insertAdjacentHTML('beforeend', `
+            <li style="background: #000;">
+              <small style="color: #09f;">${username} (privado)</small>
+              <p>${msg}</p>
+            </li>
+          `)
+        }
+      } else if (username !== currentUser) {
+        console.log('Mostrando notificación para mensaje de:', username)
+        showNotification(username, roomId)
+      }
+
+      messages.scrollTop = messages.scrollHeight
+    })
+
+    //Para mensajes de union o desconexion del chat
+    socket.on('user status', ({ username, action }) => {
+      if (username === currentUser) return
+
+      if (action === 'join') {
+        const item = document.createElement('li')
+        item.className = 'user-item'
+        item.dataset.username = username
+        item.textContent = `${username} se ha unido al chat`
+        item.style.cssText = 'cursor:pointer; color:#09f; padding:5px 10px;'
+        statusMessages.appendChild(item)
+
+      } else if (action === 'leave') {
+        const item = document.createElement('li')
+        item.style.cssText = 'color:#888; font-style:italic; padding:5px 10px;'
+        item.textContent = `${username} se desconectó del chat`
+        statusMessages.appendChild(item)
+
+        messages.insertAdjacentHTML('beforeend', `
+          <li style="text-align:center;color:#94a3b8;font-style:italic;">
+            ${username} se desconectó del chat
+          </li>
+        `)
+      }
+    })
+
+    updateNotificationList()
+
+    //Iniciar chat
+    const currentUserItem = document.createElement('li')
+    currentUserItem.className = 'user-item'
+    currentUserItem.dataset.username = currentUser
+    currentUserItem.textContent = `${currentUser} (tú)`
+    currentUserItem.style.cssText = 'color:#888; padding:5px 10px; margin:2px 0;'
+    statusMessages.appendChild(currentUserItem)
+
+  </script>
+
+
+
 </head>
 
 <body>
-  <section id="chat">
-    <ul id="messages"></ul>
-    <form id="form">
-      <input type="text" name="message" id="input" placeholder="Type a message" autocomplete="off" />
-      <button type="submit">Enviar</button>
-    </form>
-  </section>
+  <main class="container">
+    <section id="chat">
+      <div id="chat-header">
+        <button id="back-button" style="display: none;">←</button>
+        <h3 id="header-title">Chat General</h3>
+      </div>
+      <ul id="messages"></ul>
+      <form id="form">
+        <input id="input" autocomplete="off" placeholder="Escribe un mensaje...">
+        <button>Enviar</button>
+      </form>
+    </section>
 
+    <aside id="chatUnidos">
+      <h3>Usuarios</h3>
+      <ul id="status-messages"></ul>
+
+      <h3 style="margin-top: 20px;">Notificaciones</h3>
+      <ul id="notification-list"></ul>
+    </aside>
+  </main>
 </body>
 
 </html>
