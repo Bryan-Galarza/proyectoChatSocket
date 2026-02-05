@@ -4,17 +4,54 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chat Grupal</title>
-
+  <link rel="stylesheet" href="./estilos/chat.css">
   <script type="module">
     import { io } from 'https://cdn.socket.io/4.3.2/socket.io.esm.min.js'
     
     let currentRoom = null
     let currentTarget = null
 
-    // Obtener username
+    //Funcion para pedir username al usuario
+    const promptUsername = () => new Promise((resolve) => {
+      const modal = document.getElementById('username-modal')
+      const form = document.getElementById('username-form')
+      const inputField = document.getElementById('username-input')
+      const skipButton = document.getElementById('username-skip')
+
+      const cleanup = () => {
+        form.removeEventListener('submit', onSubmit)
+        skipButton.removeEventListener('click', onSkip)
+        modal.classList.remove('is-open')
+      }
+
+      const onSubmit = (event) => {
+        event.preventDefault()
+        const value = inputField.value.trim()
+        cleanup()
+        resolve(value || null)
+      }
+
+      const onSkip = () => {
+        cleanup()
+        resolve(null)
+      }
+
+      form.addEventListener('submit', onSubmit)
+      skipButton.addEventListener('click', onSkip)
+      modal.classList.add('is-open')
+      inputField.focus()
+    })
+
+    //Obtener el username del usuario o generar uno con randomuser
     const getUsername = async () => {
       const username = localStorage.getItem('username')
       if (username && username !== "undefined") return username
+
+      const manualUsername = await promptUsername()
+      if (manualUsername) {
+        localStorage.setItem('username', manualUsername)
+        return manualUsername
+      }
       
       try {
         const res = await fetch('https://randomuser.me/api/0.8/?results=1');
@@ -203,14 +240,8 @@
       } else if (action === 'leave') {
         const item = document.createElement('li')
         item.style.cssText = 'color:#888; font-style:italic; padding:5px 10px;'
-        item.textContent = `${username} se desconectó del chat`
+        item.textContent = `${username} se ha desconectado del chat`
         statusMessages.appendChild(item)
-
-        messages.insertAdjacentHTML('beforeend', `
-          <li style="text-align:center;color:#888;font-style:italic;">
-            ${username} se desconectó del chat
-          </li>
-        `)
       }
     })
 
@@ -223,12 +254,23 @@
     currentUserItem.textContent = `${currentUser} (tú)`
     currentUserItem.style.cssText = 'color:#888; padding:5px 10px; margin:2px 0;'
     statusMessages.appendChild(currentUserItem)
-
   </script>
-  <link rel="stylesheet" href="/estilos/chat.css">
 </head>
 
 <body>
+  <div id="username-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="username-title">
+    <div class="modal">
+      <h2 id="username-title">Ingrese un usuario</h2>
+      <p class="modal-subtitle">Si omite este paso se le asignará un usuario aleatorio.</p>
+      <form id="username-form" class="modal-form">
+        <input id="username-input" type="text" autocomplete="off" placeholder="Tu usuario" maxlength="24">
+        <div class="modal-actions">
+          <button type="button" id="username-skip" class="btn-secondary">Omitir</button>
+          <button type="submit" class="btn-primary">Ingresar</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <main class="container">
     <section id="chat">
       <div id="chat-header">
@@ -251,5 +293,4 @@
     </aside>
   </main>
 </body>
-
 </html>
