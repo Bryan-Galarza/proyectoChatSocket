@@ -4,19 +4,19 @@ let currentRoom = null
 let currentTarget = null
 
 //Funcion para pedir username al usuario
-const promptUsername = () => new Promise((resolve) => {
+const promptUsername = () => new Promise((resolve) =>{
   const modal = document.getElementById('username-modal')
   const form = document.getElementById('username-form')
   const inputField = document.getElementById('username-input')
   const skipButton = document.getElementById('username-skip')
 
-  const cleanup = () => {
+  const cleanup = () =>{
     form.removeEventListener('submit', onSubmit)
     skipButton.removeEventListener('click', onSkip)
     modal.classList.remove('is-open')
   }
 
-  const onSubmit = (event) => {
+  const onSubmit = (event) =>{
     event.preventDefault()
     const value = inputField.value.trim()
     cleanup()
@@ -44,7 +44,8 @@ const getUsername = async () => {
     return manualUsername
   }
 
-  try {
+  try{
+    //Generar usuario aleatorio
     const res = await fetch('https://randomuser.me/api/0.8/?results=1')
     const data = await res.json()
     const randomUsername = data.results[0].user.username
@@ -52,12 +53,11 @@ const getUsername = async () => {
     console.log("Fetched new username:", randomUsername)
     localStorage.setItem('username', randomUsername)
     return randomUsername
-  } catch (error) {
+  }catch (error){
     console.error("Fetch failed:", error)
   }
 }
 
-// Función IIFE async para inicializar socket correctamente
 ;(async () => {
   const socket = io({
     auth: {username: await getUsername(), serverOffset: 0}
@@ -74,19 +74,19 @@ const getUsername = async () => {
   const currentUser = socket.auth.username
 
   //Configuracion de notificaciones
-  if (!localStorage.getItem('notifications')) {
+  if (!localStorage.getItem('notifications')){
     localStorage.setItem('notifications', JSON.stringify([]))
   }
 
-  function updateNotificationList() {
+  function updateNotificationList(){
     const notifications = JSON.parse(localStorage.getItem('notifications'))
     notificationList.innerHTML = ''
 
-    if (notifications.length === 0) {
+    if (notifications.length === 0){
       notificationList.innerHTML = '<li style="padding: 10px; color: #888;">No hay notificaciones</li>'
-      return
+      return 
     }
-    //Mostrar notificaciones
+    //Mostrar notificación de nuevo mensaje
     notifications.forEach(notif => {
       const item = document.createElement('li')
       item.className = 'notification-item'
@@ -104,7 +104,7 @@ const getUsername = async () => {
     })
   }
 
-  function showNotification(fromUser, roomId) {
+  function showNotification(fromUser, roomId){
     console.log('Mostrando notificación de:', fromUser, 'room:', roomId)
     const notifications = JSON.parse(localStorage.getItem('notifications'))
     const existing = notifications.find(n => n.user === fromUser)
@@ -117,7 +117,7 @@ const getUsername = async () => {
   }
 
   //Configuraciones del chat
-  function openPrivateChat(targetUser) {
+  function openPrivateChat(targetUser){
     if (targetUser === currentUser) return
 
     const roomId = [currentUser, targetUser].sort().join('-')
@@ -141,7 +141,7 @@ const getUsername = async () => {
   }
 
   //Regresar al chat general
-  function returnToGeneral() {
+  function returnToGeneral(){
     currentRoom = null
     currentTarget = null
     headerTitle.textContent = 'Chat General'
@@ -168,7 +168,7 @@ const getUsername = async () => {
   })
 
   //Enviar mensaje segun corresponda chat privado o general
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', (e) =>{
     e.preventDefault()
     const msg = input.value.trim()
     if (!msg) return
@@ -194,7 +194,7 @@ const getUsername = async () => {
   })
 
   //Escucha del socket para el chat general
-  socket.on('chat message', (msg, serverOffset, username) => {
+  socket.on('chat message', (msg, serverOffset, username) =>{
     if (!currentRoom) {
       messages.insertAdjacentHTML('beforeend', `
         <li>
@@ -211,15 +211,11 @@ const getUsername = async () => {
     socket.auth.serverOffset = lastId
   })
 
-  socket.on('private message', ({ msg, username, roomId }) => {
+  socket.on('private message', ({msg, username, roomId}) => {
     const roomIdExpected = [currentUser, username].sort().join('-')
-
     if (roomId !== roomIdExpected) return
-    if (username === currentUser) {
-      return
-    }
+    if (username === currentUser) {return}
 
-    //Si estamos en este chat privado
     if (currentRoom === roomId) {
       messages.insertAdjacentHTML('beforeend', `
         <li style="align-self: flex-start; max-width: 75%;">
