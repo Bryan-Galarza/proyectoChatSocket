@@ -46,11 +46,8 @@ await db.execute(`
 io.on('connection', async (socket) => {
   const username = socket.handshake.auth.username ?? 'anonymous';
   console.log(`an user has connected!: ${username}`);
-
-  // Notificar a todos que un usuario se unio
   socket.broadcast.emit('user status', {username, action: 'join' })
 
-  // Enviar lista de usuarios conectados
   const connectedUsers = Array.from(io.sockets.sockets.values())
     .map(s => s.handshake.auth.username)
     .filter(name => name && name !== username)
@@ -64,11 +61,11 @@ io.on('connection', async (socket) => {
     io.emit('user status', {username, action: 'leave' })
   });
 
-  //Chat general
+  //Chat general con soket on
   socket.on('chat:general', async (msg) => {
     const username = socket.handshake.auth.username ?? 'anonymous'
     let result
-    
+
     try {
       result = await db.execute({
         sql: 'INSERT INTO messages (content, user) VALUES (:msg, :username)',
@@ -78,7 +75,6 @@ io.on('connection', async (socket) => {
       console.error(e)
       return
     }
-
     io.emit('chat message', msg, result.lastInsertRowid.toString(), username)
   })
 
@@ -86,11 +82,11 @@ io.on('connection', async (socket) => {
   if (!socket.recovered) {
     try {
       const results = await db.execute({
-        sql: 'SELECT id, content, user FROM messages WHERE id > ?',
+        sql: 'SELECT id, content, user FROM messages WHERE id > ? ORDER BY id DESC LIMIT 30',
         args: [socket.handshake.auth.serverOffset ?? 0]
       })
 
-      results.rows.forEach(row => {
+      results.rows.reverse().forEach(row => {
         socket.emit('chat message', row.content, row.id.toString(), row.user)
       })
     } catch (e) {
@@ -98,15 +94,57 @@ io.on('connection', async (socket) => {
     }
   }
 
+  //Regresaar al chat general
+  socket.on('join:general', async () => {
+    console.log(`${username} volviendo al chat general`)
+
+    try {
+      const results = await db.execute({
+        sql: `SELECT id, content, user FROM(
+                SELECT id, content, user FROM messages ORDER BY id DESC LIMIT 19) sub ORDER BY id ASC`,
+        args: []
+      })
+      //reiniciar offset
+      let lastId = 0
+      
+      results.rows.forEach(row => {
+        socket.emit('chat message', row.content, row.id.toString(), row.user)
+      lastId = row.id
+      })
+      socket.emit('reset offset', lastId)
+    } catch (e) {
+      console.error('Error al recuperar historial general:', e)
+    }
+  })
+
   //Union a sala privada
-  socket.on('join:private', (roomId) => {
+  socket.on('join:private', async (roomId) => {
     socket.join(roomId);
     console.log(`${username} unido a sala ${roomId}`)
+    
+    try {
+      const results = await db.execute({
+        sql: 'SELECT id, content, sender, receiver, room_id FROM private_messages WHERE room_id = ? ORDER BY id ASC LIMIT 20',
+        args: [roomId]
+      })
+
+      results.rows.forEach(row => {
+        socket.emit('private message history', {
+          msg: row.content,
+          sender: row.sender,
+          receiver: row.receiver,
+          roomId: row.room_id
+        })
+      })
+    }catch (e) {
+      console.error('Error al recuperar los mensajes privados:', e)
+    }
   })
 
   //chat privado
   socket.on('chat:private', async ({ msg, roomId, target }) => {
     const username = socket.handshake.auth.username ?? 'anonymous'
+
     if (!socket.rooms.has(roomId)) {
       socket.join(roomId);
     }
@@ -120,10 +158,16 @@ io.on('connection', async (socket) => {
       console.error('Error al guardar mensaje privado:', e)
     }
 
-    // Enviar al destinatario con io
-    io.to(roomId).emit('private message', {
-      msg, username, roomId
-    })
+    for (const [, targetSocket] of io.sockets.sockets) {
+      if (targetSocket.handshake.auth.username === target) {
+        if (!targetSocket.rooms.has(roomId)) {
+          targetSocket.join(roomId);
+        }
+        break;
+      }
+    }
+    //Emitir el mensaje con io
+    io.to(roomId).emit('private message', { msg, username, roomId})
   })
 })
 
