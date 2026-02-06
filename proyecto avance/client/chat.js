@@ -57,7 +57,7 @@ const getUsername = async () => {
     console.error("Fetch failed:", error)
   }
 }
-
+//Conexion con socket
 ;(async () => {
   const socket = io({
     auth: {username: await getUsername(), serverOffset: 0}
